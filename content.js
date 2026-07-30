@@ -8,9 +8,10 @@ const ai = new GoogleGenAI({});
 // Initialize Supabase admin client (Bypasses RLS)
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.VITE_SUPABASE_SERVICE_KEY;
+const API_BIBLE_KEY = process.env.API_BIBLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.error("❌ ERROR: Supabase credentials not set in .env.");
+if (!SUPABASE_URL || !SUPABASE_KEY || !API_BIBLE_KEY) {
+    console.error("❌ ERROR: Missing credentials in .env (Supabase or API.Bible).");
     process.exit(1);
 }
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -18,8 +19,39 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // Configuration for Gemini 2.5 Flash
 const MODEL_NAME = 'gemini-2.5-flash';
 
+// --- API.BIBLE CONFIGURATION ---
+// The exact ID for the New International Version (NIV)
+const BIBLE_ID = '78a9f6124f344018-01'; 
+
+// A curated list of books/chapters rich with potential verses and inspiration
+const CURATED_CHAPTERS = [
+    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53', 
+    'EPH.2', 'PHI.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
+];
+
+async function fetchRandomChapterText() {
+    const randomChapterId = CURATED_CHAPTERS[Math.floor(Math.random() * CURATED_CHAPTERS.length)];
+    console.log(`📖 Fetching raw text for chapter: ${randomChapterId} from API.Bible...`);
+    
+    try {
+        const response = await fetch(`https://api.scripture.api.bible/v1/bibles/${BIBLE_ID}/chapters/${randomChapterId}?content-type=text`, {
+            headers: { 'api-key': API_BIBLE_KEY }
+        });
+        
+        if (!response.ok) throw new Error(`API.Bible Error: ${response.status}`);
+        
+        const data = await response.json();
+        return {
+            reference: data.data.reference,
+            text: data.data.content // This is the raw string of the chapter text
+        };
+    } catch (error) {
+        console.error("❌ Failed to fetch from API.Bible:", error);
+        return null;
+    }
+}
+
 // --- 1. JOB PROMPT TEMPLATES ---
-// Turned into functions to dynamically inject "existing" names to avoid duplicates
 const PROMPT_TEMPLATES = {
     PERSON: (existing) => `
         You are a strict, orthodox biblical historian. 
@@ -60,6 +92,56 @@ const PROMPT_TEMPLATES = {
             "imageKeyword": "A single word for an Unsplash background image search (e.g., ruins, river, mountain)."
           }
         }
+    `,
+    VERSE: (existing, rawTextData) => `
+        You are a strict editorial curator for a biblical app.
+        Your task is to select a highly impactful, standalone verse (or 2-3 short contiguous verses) from the provided raw text.
+        
+        CRITICAL INSTRUCTIONS:
+        - Output ONLY valid JSON.
+        - The selected text MUST be a verbatim quote from the provided text block. Do not alter the translation.
+        - DO NOT generate a card for any of the following references: [${existing}]
+        
+        RAW TEXT SOURCE (Chapter: ${rawTextData.reference}):
+        """
+        ${rawTextData.text}
+        """
+        
+        REQUIRED JSON SCHEMA:
+        {
+          "type": "VERSE",
+          "metadataAnchor": "Book Chapter:Verse(s) (e.g., Romans 8:28)",
+          "payload": {
+            "text": "The verbatim scripture text you selected.",
+            "theme": "A Tailwind gradient class for the background (e.g., 'bg-gradient-to-br from-slate-900 to-slate-800' or 'bg-gradient-to-br from-blue-900 to-cyan-900')",
+            "fontStyle": "font-serif"
+          }
+        }
+    `,
+    INSPIRATIONAL: (existing, rawTextData) => `
+        You are a strict, orthodox devotional writer.
+        Your task is to write a short, scripturally sound reflection based on a verse from the provided text.
+        
+        CRITICAL INSTRUCTIONS:
+        - Output ONLY valid JSON.
+        - Keep the theology historically orthodox. AVOID prosperity gospel, NAR, or man-centered pop-psychology. Focus on God's character, grace, and truth.
+        - DO NOT generate a card for any of the following references: [${existing}]
+        
+        RAW TEXT SOURCE (Chapter: ${rawTextData.reference}):
+        """
+        ${rawTextData.text}
+        """
+        
+        REQUIRED JSON SCHEMA:
+        {
+          "type": "INSPIRATIONAL",
+          "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
+          "payload": {
+            "quote": "A powerful, original 1-2 sentence reflection or conclusion drawn strictly from the provided text.",
+            "bgUrl": "A placeholder image URL from Unsplash (e.g., https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=800&h=1200)",
+            "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
+          }
+        }
     `
 };
 
@@ -94,7 +176,18 @@ async function runJob(jobType) {
         : 'None generated yet';
 
     console.log(`🧠 Instructing model to avoid: ${existingNames}`);
-    const prompt = templateFn(existingNames);
+    
+    // If the job requires scripture text, fetch it first
+    let rawTextData = null;
+    if (jobType === 'VERSE' || jobType === 'INSPIRATIONAL') {
+        rawTextData = await fetchRandomChapterText();
+        if (!rawTextData) {
+            console.error("❌ Aborting job: Could not fetch raw scripture text.");
+            return;
+        }
+    }
+
+    const prompt = templateFn(existingNames, rawTextData);
 
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
     
@@ -119,13 +212,13 @@ async function runJob(jobType) {
             let extractedDeepDive = null;
 
             // Extract the deep dive text if it exists so we can store it relationally
-            if (jobType === 'PERSON' && parsedData.payload.deepDive) {
+            if (parsedData.payload.deepDive) {
                 extractedDeepDive = parsedData.payload.deepDive;
                 delete finalPayload.deepDive;
                 finalPayload.hasDeepDive = true; // Tell the frontend it exists
             }
 
-            // Construct Unsplash URL from keyword
+            // Construct Unsplash URL from keyword (for PERSON/PLACE)
             if (finalPayload.imageKeyword) {
                 finalPayload.imageUrl = `https://images.unsplash.com/photo-1544822688-c5f41d2c1f71?auto=format&fit=crop&q=80&w=800&h=1200`; // We will use a more robust URL builder later
             }
@@ -168,6 +261,32 @@ async function runJob(jobType) {
 }
 
 // --- 3. EXECUTION ---
-// You can now run whichever specific job you need!
-//runJob('PERSON');
- runJob('PLACE');
+// Parse command line arguments
+const args = process.argv.slice(2);
+const validJobs = ['PERSON', 'PLACE', 'VERSE', 'INSPIRATIONAL'];
+
+if (args.includes('--PERSON')) {
+    runJob('PERSON');
+} else if (args.includes('--PLACE')) {
+    runJob('PLACE');
+} else if (args.includes('--VERSE')) {
+    runJob('VERSE');
+} else if (args.includes('--INSPIRATIONAL')) {
+    runJob('INSPIRATIONAL');
+} else if (args.includes('--RANDOM')) {
+    const randomJob = validJobs[Math.floor(Math.random() * validJobs.length)];
+    console.log(`🎲 Random mode selected! Picked: ${randomJob}`);
+    runJob(randomJob);
+} else {
+    console.log(`
+❌ No valid flag provided.
+Usage: node content.js [FLAG]
+
+Available flags:
+  --PERSON        Generate a biographical card
+  --PLACE         Generate a location card
+  --VERSE         Fetch and format a raw verse
+  --INSPIRATIONAL Fetch a verse and write a devotional reflection
+  --RANDOM        Pick one of the above at random
+    `);
+}
