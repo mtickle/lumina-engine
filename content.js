@@ -169,5 +169,5 @@ async function runJob(jobType) {
 
 // --- 3. EXECUTION ---
 // You can now run whichever specific job you need!
-runJob('PERSON');
-// runJob('PLACE');
+//runJob('PERSON');
+ runJob('PLACE');
