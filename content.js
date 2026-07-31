@@ -22,25 +22,25 @@ const MODEL_NAME = 'gemini-2.5-flash';
 // *** API.BIBLE CONFIGURATION ***
 const BIBLE_ID = '78a9f6124f344018-01'; // NIV
 const CURATED_CHAPTERS = [
-    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53', 
+    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53',
     'EPH.2', 'PHI.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
 ];
 
 async function fetchRandomChapterText() {
     const randomChapterId = CURATED_CHAPTERS[Math.floor(Math.random() * CURATED_CHAPTERS.length)];
     console.log(`📖 Fetching raw text for chapter: ${randomChapterId} from API.Bible...`);
-    
+
     try {
-        const response = await fetch(`https://api.scripture.api.bible/v1/bibles/${BIBLE_ID}/chapters/${randomChapterId}?content-type=text`, {
+        const response = await fetch(`https://rest.api.bible/v1/bibles/${BIBLE_ID}/chapters/${randomChapterId}?content-type=text`, {
             headers: { 'api-key': API_BIBLE_KEY }
         });
-        
+
         if (!response.ok) throw new Error(`API.Bible Error: ${response.status}`);
-        
+
         const data = await response.json();
         return {
             reference: data.data.reference,
-            text: data.data.content 
+            text: data.data.content
         };
     } catch (error) {
         console.error("❌ Failed to fetch from API.Bible:", error);
@@ -60,7 +60,7 @@ const IMAGE_POOLS = {
 
 function getImageUrl(categoryTag, itemIdentifier) {
     const pool = IMAGE_POOLS[categoryTag] || IMAGE_POOLS.ATMOSPHERIC_LIGHT;
-    
+
     // Hash the card's unique text to deterministically pick a consistent image from the pool
     const hashText = itemIdentifier || 'fallback';
     const hash = hashText.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -162,17 +162,17 @@ async function runJob(jobType) {
     }
 
     const templateFn = PROMPT_TEMPLATES[jobType];
-    
+
     console.log(`📚 Checking Supabase for existing ${jobType}s...`);
     const { data: existingCards } = await supabase
         .from('feed_cards')
         .select('metadata_anchor')
         .eq('card_type', jobType);
 
-    const existingNames = existingCards && existingCards.length > 0 
+    const existingNames = existingCards && existingCards.length > 0
         ? existingCards.map(c => c.metadata_anchor).join(', ')
         : 'None generated yet';
-    
+
     let rawTextData = null;
     if (jobType === 'VERSE' || jobType === 'INSPIRATIONAL') {
         rawTextData = await fetchRandomChapterText();
@@ -182,19 +182,19 @@ async function runJob(jobType) {
     const prompt = templateFn(existingNames, rawTextData);
 
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
-    
+
     try {
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
                 temperature: 0.0,
-                responseMimeType: "application/json" 
+                responseMimeType: "application/json"
             }
         });
 
         console.log(`✅ ${jobType} Generation complete!`);
-        
+
         try {
             const parsedData = JSON.parse(response.text);
             const cardId = crypto.randomUUID();
@@ -212,7 +212,7 @@ async function runJob(jobType) {
             if (finalPayload.imageCategory) {
                 console.log(`📸 Generating image URL for category: "${finalPayload.imageCategory}"`);
                 const fetchedUrl = getImageUrl(finalPayload.imageCategory, parsedData.metadataAnchor);
-                
+
                 // Map the URL to the correct frontend prop based on card type
                 if (jobType === 'PLACE') {
                     finalPayload.mapImageUrl = fetchedUrl;
@@ -221,7 +221,7 @@ async function runJob(jobType) {
                 } else {
                     finalPayload.imageUrl = fetchedUrl;
                 }
-                
+
                 // Remove the raw category string from the payload so we don't send unused data to the client
                 delete finalPayload.imageCategory;
             }
@@ -247,14 +247,14 @@ async function runJob(jobType) {
                         card_id: cardId,
                         content_markdown: extractedDeepDive
                     });
-                    
+
                 if (deepDiveError) throw new Error(`Deep Dive Insert Failed: ${deepDiveError.message}`);
             }
 
             console.log(`🎉 Success! ${parsedData.metadataAnchor} added to database!\n`);
 
         } catch (dbOrParseError) {
-             console.error("❌ ERROR during formatting or database insert:", dbOrParseError);
+            console.error("❌ ERROR during formatting or database insert:", dbOrParseError);
         }
 
     } catch (error) {
