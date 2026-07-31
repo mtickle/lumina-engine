@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
-import 'dotenv/config';
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({});
@@ -16,38 +16,66 @@ if (!SUPABASE_URL || !SUPABASE_KEY || !API_BIBLE_KEY) {
 }
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Configuration for Gemini 2.5 Flash
+// Configuration for Gemini
 const MODEL_NAME = 'gemini-2.5-flash';
 
 // --- API.BIBLE CONFIGURATION ---
-// The exact ID for the New International Version (NIV)
-const BIBLE_ID = '78a9f6124f344018-01'; 
-
-// A curated list of books/chapters rich with potential verses and inspiration
+const BIBLE_ID = '78a9f6124f344018-01'; // NIV
 const CURATED_CHAPTERS = [
-    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53', 
+    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53',
     'EPH.2', 'PHI.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
 ];
 
 async function fetchRandomChapterText() {
     const randomChapterId = CURATED_CHAPTERS[Math.floor(Math.random() * CURATED_CHAPTERS.length)];
     console.log(`📖 Fetching raw text for chapter: ${randomChapterId} from API.Bible...`);
-    
+
     try {
         const response = await fetch(`https://api.scripture.api.bible/v1/bibles/${BIBLE_ID}/chapters/${randomChapterId}?content-type=text`, {
             headers: { 'api-key': API_BIBLE_KEY }
         });
-        
+
         if (!response.ok) throw new Error(`API.Bible Error: ${response.status}`);
-        
+
         const data = await response.json();
         return {
             reference: data.data.reference,
-            text: data.data.content // This is the raw string of the chapter text
+            text: data.data.content
         };
     } catch (error) {
         console.error("❌ Failed to fetch from API.Bible:", error);
         return null;
+    }
+}
+
+// --- UNSPLASH INTEGRATION ---
+async function fetchUnsplashImage(keyword) {
+    const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+
+    // Fallback if no key is provided
+    if (!accessKey || accessKey === 'your_new_key_here') {
+        console.warn("⚠️ UNSPLASH_ACCESS_KEY missing. Falling back to Picsum.");
+        return `https://picsum.photos/seed/${encodeURIComponent(keyword)}/800/1200`;
+    }
+
+    try {
+        const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(keyword)}&orientation=portrait&client_id=${accessKey}`;
+        const res = await fetch(url);
+
+        // Unsplash free tier is 50 requests/hour. Fallback smoothly if we hit the limit.
+        if (!res.ok) {
+            console.warn(`⚠️ Unsplash API limit/error (${res.status}). Falling back to Picsum.`);
+            return `https://picsum.photos/seed/${encodeURIComponent(keyword)}/800/1200`;
+        }
+
+        const data = await res.json();
+        // Append optimal sizing parameters to the raw URL
+        const separator = data.urls.raw.includes('?') ? '&' : '?';
+        return `${data.urls.raw}${separator}auto=format&fit=crop&w=800&q=80`;
+
+    } catch (error) {
+        console.error("❌ Failed to fetch from Unsplash:", error.message);
+        return `https://picsum.photos/seed/${encodeURIComponent(keyword)}/800/1200`;
     }
 }
 
@@ -59,7 +87,7 @@ const PROMPT_TEMPLATES = {
         
         CRITICAL INSTRUCTIONS:
         - Ensure all historical and theological details are strictly factual according to the biblical text.
-        - Avoid all extra-biblical revelations, apocryphal sources, and modern fringe interpretations (e.g., NAR).
+        - Avoid all extra-biblical revelations, apocryphal sources, and modern fringe interpretations.
         - DO NOT generate a card for any of the following figures: [${existing}]
         
         REQUIRED JSON SCHEMA:
@@ -79,7 +107,6 @@ const PROMPT_TEMPLATES = {
         
         CRITICAL INSTRUCTIONS:
         - Ensure all historical and theological details are strictly factual according to the biblical text.
-        - Avoid all extra-biblical revelations, apocryphal sources, and modern fringe interpretations.
         - DO NOT generate a card for any of the following places: [${existing}]
         
         REQUIRED JSON SCHEMA:
@@ -96,11 +123,6 @@ const PROMPT_TEMPLATES = {
     VERSE: (existing, rawTextData) => `
         You are a strict editorial curator for a biblical app.
         Your task is to select a highly impactful, standalone verse (or 2-3 short contiguous verses) from the provided raw text.
-        
-        CRITICAL INSTRUCTIONS:
-        - Output ONLY valid JSON.
-        - The selected text MUST be a verbatim quote from the provided text block. Do not alter the translation.
-        - DO NOT generate a card for any of the following references: [${existing}]
         
         RAW TEXT SOURCE (Chapter: ${rawTextData.reference}):
         """
@@ -122,11 +144,6 @@ const PROMPT_TEMPLATES = {
         You are a strict, orthodox devotional writer.
         Your task is to write a short, scripturally sound reflection based on a verse from the provided text.
         
-        CRITICAL INSTRUCTIONS:
-        - Output ONLY valid JSON.
-        - Keep the theology historically orthodox. AVOID prosperity gospel, NAR, or man-centered pop-psychology. Focus on God's character, grace, and truth.
-        - DO NOT generate a card for any of the following references: [${existing}]
-        
         RAW TEXT SOURCE (Chapter: ${rawTextData.reference}):
         """
         ${rawTextData.text}
@@ -138,7 +155,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
           "payload": {
             "quote": "A powerful, original 1-2 sentence reflection or conclusion drawn strictly from the provided text.",
-            "bgUrl": "A placeholder image URL from Unsplash (e.g., https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=800&h=1200)",
+            "imageKeyword": "A single word for an Unsplash background image search (e.g., sunrise, forest, path).",
             "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
           }
         }
@@ -154,76 +171,69 @@ async function runJob(jobType) {
     }
 
     const templateFn = PROMPT_TEMPLATES[jobType];
-    if (!templateFn) {
-        console.error(`❌ ERROR: Invalid job type: ${jobType}`);
-        return;
-    }
 
-    // 1. Check existing records to prevent duplicates
     console.log(`📚 Checking Supabase for existing ${jobType}s...`);
-    const { data: existingCards, error: fetchError } = await supabase
+    const { data: existingCards } = await supabase
         .from('feed_cards')
         .select('metadata_anchor')
         .eq('card_type', jobType);
 
-    if (fetchError) {
-        console.error('❌ Failed to fetch existing cards:', fetchError.message);
-        return;
-    }
-
-    const existingNames = existingCards && existingCards.length > 0 
+    const existingNames = existingCards && existingCards.length > 0
         ? existingCards.map(c => c.metadata_anchor).join(', ')
         : 'None generated yet';
 
-    console.log(`🧠 Instructing model to avoid: ${existingNames}`);
-    
-    // If the job requires scripture text, fetch it first
     let rawTextData = null;
     if (jobType === 'VERSE' || jobType === 'INSPIRATIONAL') {
         rawTextData = await fetchRandomChapterText();
-        if (!rawTextData) {
-            console.error("❌ Aborting job: Could not fetch raw scripture text.");
-            return;
-        }
+        if (!rawTextData) return;
     }
 
     const prompt = templateFn(existingNames, rawTextData);
 
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
-    
+
     try {
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
                 temperature: 0.0,
-                responseMimeType: "application/json" 
+                responseMimeType: "application/json"
             }
         });
 
         console.log(`✅ ${jobType} Generation complete!`);
-        
+
         try {
             const parsedData = JSON.parse(response.text);
-            console.log(`\n☁️ Pushing ${parsedData.metadataAnchor} to Supabase...`);
-            
             const cardId = crypto.randomUUID();
             let finalPayload = { ...parsedData.payload };
             let extractedDeepDive = null;
 
-            // Extract the deep dive text if it exists so we can store it relationally
+            // Extract deep dive for relational database table
             if (parsedData.payload.deepDive) {
                 extractedDeepDive = parsedData.payload.deepDive;
                 delete finalPayload.deepDive;
-                finalPayload.hasDeepDive = true; // Tell the frontend it exists
+                finalPayload.hasDeepDive = true;
             }
 
-            // Construct Unsplash URL from keyword (for PERSON/PLACE)
+            // Fetch real image from Unsplash
             if (finalPayload.imageKeyword) {
-                finalPayload.imageUrl = `https://images.unsplash.com/photo-1544822688-c5f41d2c1f71?auto=format&fit=crop&q=80&w=800&h=1200`; // We will use a more robust URL builder later
+                console.log(`📸 Fetching Unsplash image for: "${finalPayload.imageKeyword}"`);
+                const fetchedUrl = await fetchUnsplashImage(finalPayload.imageKeyword);
+
+                // Map the URL to the correct frontend prop based on card type
+                if (jobType === 'PLACE') {
+                    finalPayload.mapImageUrl = fetchedUrl;
+                } else if (jobType === 'INSPIRATIONAL') {
+                    finalPayload.bgUrl = fetchedUrl;
+                } else {
+                    finalPayload.imageUrl = fetchedUrl;
+                }
             }
 
-            // 1. Insert the main feed card FIRST (so the Foreign Key has something to attach to)
+            console.log(`☁️ Pushing ${parsedData.metadataAnchor} to Supabase...`);
+
             const { error: cardError } = await supabase
                 .from('feed_cards')
                 .insert({
@@ -236,7 +246,6 @@ async function runJob(jobType) {
 
             if (cardError) throw new Error(`Feed Card Insert Failed: ${cardError.message}`);
 
-            // 2. Insert the deep dive SECOND
             if (extractedDeepDive) {
                 const { error: deepDiveError } = await supabase
                     .from('deep_dives')
@@ -244,15 +253,14 @@ async function runJob(jobType) {
                         card_id: cardId,
                         content_markdown: extractedDeepDive
                     });
-                    
+
                 if (deepDiveError) throw new Error(`Deep Dive Insert Failed: ${deepDiveError.message}`);
             }
 
             console.log(`🎉 Success! ${parsedData.metadataAnchor} added to database!\n`);
-            return parsedData;
 
         } catch (dbOrParseError) {
-             console.error("❌ ERROR during formatting or database insert:", dbOrParseError);
+            console.error("❌ ERROR during formatting or database insert:", dbOrParseError);
         }
 
     } catch (error) {
@@ -261,32 +269,17 @@ async function runJob(jobType) {
 }
 
 // --- 3. EXECUTION ---
-// Parse command line arguments
 const args = process.argv.slice(2);
 const validJobs = ['PERSON', 'PLACE', 'VERSE', 'INSPIRATIONAL'];
 
-if (args.includes('--PERSON')) {
-    runJob('PERSON');
-} else if (args.includes('--PLACE')) {
-    runJob('PLACE');
-} else if (args.includes('--VERSE')) {
-    runJob('VERSE');
-} else if (args.includes('--INSPIRATIONAL')) {
-    runJob('INSPIRATIONAL');
-} else if (args.includes('--RANDOM')) {
+if (args.includes('--PERSON')) runJob('PERSON');
+else if (args.includes('--PLACE')) runJob('PLACE');
+else if (args.includes('--VERSE')) runJob('VERSE');
+else if (args.includes('--INSPIRATIONAL')) runJob('INSPIRATIONAL');
+else if (args.includes('--RANDOM')) {
     const randomJob = validJobs[Math.floor(Math.random() * validJobs.length)];
-    console.log(`🎲 Random mode selected! Picked: ${randomJob}`);
+    console.log(`🎲 Picked: ${randomJob}`);
     runJob(randomJob);
 } else {
-    console.log(`
-❌ No valid flag provided.
-Usage: node content.js [FLAG]
-
-Available flags:
-  --PERSON        Generate a biographical card
-  --PLACE         Generate a location card
-  --VERSE         Fetch and format a raw verse
-  --INSPIRATIONAL Fetch a verse and write a devotional reflection
-  --RANDOM        Pick one of the above at random
-    `);
+    console.log(`❌ No valid flag provided. Try --PERSON, --PLACE, --VERSE, or --INSPIRATIONAL`);
 }
