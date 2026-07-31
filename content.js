@@ -1,6 +1,6 @@
-import 'dotenv/config';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
 
 // Initialize the Google Gen AI client
 const ai = new GoogleGenAI({});
@@ -19,28 +19,28 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // Configuration for Gemini
 const MODEL_NAME = 'gemini-2.5-flash';
 
-// --- API.BIBLE CONFIGURATION ---
+// *** API.BIBLE CONFIGURATION ***
 const BIBLE_ID = '78a9f6124f344018-01'; // NIV
 const CURATED_CHAPTERS = [
-    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53',
+    'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53', 
     'EPH.2', 'PHI.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
 ];
 
 async function fetchRandomChapterText() {
     const randomChapterId = CURATED_CHAPTERS[Math.floor(Math.random() * CURATED_CHAPTERS.length)];
     console.log(`📖 Fetching raw text for chapter: ${randomChapterId} from API.Bible...`);
-
+    
     try {
         const response = await fetch(`https://api.scripture.api.bible/v1/bibles/${BIBLE_ID}/chapters/${randomChapterId}?content-type=text`, {
             headers: { 'api-key': API_BIBLE_KEY }
         });
-
+        
         if (!response.ok) throw new Error(`API.Bible Error: ${response.status}`);
-
+        
         const data = await response.json();
         return {
             reference: data.data.reference,
-            text: data.data.content
+            text: data.data.content 
         };
     } catch (error) {
         console.error("❌ Failed to fetch from API.Bible:", error);
@@ -48,38 +48,29 @@ async function fetchRandomChapterText() {
     }
 }
 
-// --- UNSPLASH INTEGRATION ---
-async function fetchUnsplashImage(keyword) {
-    const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+// *** IMAGE GENERATION & CURATED POOLS ***
+// Verified, high-quality Picsum IDs with no modern tech or religious mismatches
+const IMAGE_POOLS = {
+    DESERT_WILDERNESS: [1015, 1036, 1040, 1043, 1050],
+    NIGHT_STARS: [1002, 1069, 1074, 903],
+    ANCIENT_STONE: [1018, 1028, 1035, 1048],
+    ATMOSPHERIC_LIGHT: [1039, 1042, 1058, 1060],
+    WATER_STORM: [1000, 1011, 1016, 1024]
+};
 
-    // Fallback if no key is provided
-    if (!accessKey || accessKey === 'your_new_key_here') {
-        console.warn("⚠️ UNSPLASH_ACCESS_KEY missing. Falling back to Picsum.");
-        return `https://picsum.photos/seed/${encodeURIComponent(keyword)}/800/1200`;
-    }
+function getImageUrl(categoryTag, itemIdentifier) {
+    const pool = IMAGE_POOLS[categoryTag] || IMAGE_POOLS.ATMOSPHERIC_LIGHT;
+    
+    // Hash the card's unique text to deterministically pick a consistent image from the pool
+    const hashText = itemIdentifier || 'fallback';
+    const hash = hashText.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const imageId = pool[hash % pool.length];
 
-    try {
-        const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(keyword)}&orientation=portrait&client_id=${accessKey}`;
-        const res = await fetch(url);
-
-        // Unsplash free tier is 50 requests/hour. Fallback smoothly if we hit the limit.
-        if (!res.ok) {
-            console.warn(`⚠️ Unsplash API limit/error (${res.status}). Falling back to Picsum.`);
-            return `https://picsum.photos/seed/${encodeURIComponent(keyword)}/800/1200`;
-        }
-
-        const data = await res.json();
-        // Append optimal sizing parameters to the raw URL
-        const separator = data.urls.raw.includes('?') ? '&' : '?';
-        return `${data.urls.raw}${separator}auto=format&fit=crop&w=800&q=80`;
-
-    } catch (error) {
-        console.error("❌ Failed to fetch from Unsplash:", error.message);
-        return `https://picsum.photos/seed/${encodeURIComponent(keyword)}/800/1200`;
-    }
+    // Return direct Picsum photo ID URL formatted for portrait mobile devices
+    return `https://picsum.photos/id/${imageId}/1080/1920`;
 }
 
-// --- 1. JOB PROMPT TEMPLATES ---
+// *** 1. JOB PROMPT TEMPLATES ***
 const PROMPT_TEMPLATES = {
     PERSON: (existing) => `
         You are a strict, orthodox biblical historian. 
@@ -96,7 +87,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "Name: Brief Title (e.g., Moses: The Exodus)",
           "payload": {
             "hookText": "A powerful, one-sentence hook (under 15 words).",
-            "imageKeyword": "A single word for an Unsplash background image search (e.g., desert, ocean, crown).",
+            "imageCategory": "MUST be exactly ONE of: DESERT_WILDERNESS, NIGHT_STARS, ANCIENT_STONE, ATMOSPHERIC_LIGHT, WATER_STORM",
             "deepDive": "A 2-3 paragraph biography explaining their biblical significance."
           }
         }
@@ -116,7 +107,7 @@ const PROMPT_TEMPLATES = {
           "payload": {
             "locationName": "Specific Name of the Place (e.g., The Temple Mount)",
             "description": "A 2-paragraph explanation of its historical and theological significance.",
-            "imageKeyword": "A single word for an Unsplash background image search (e.g., ruins, river, mountain)."
+            "imageCategory": "MUST be exactly ONE of: DESERT_WILDERNESS, NIGHT_STARS, ANCIENT_STONE, ATMOSPHERIC_LIGHT, WATER_STORM"
           }
         }
     `,
@@ -155,14 +146,14 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
           "payload": {
             "quote": "A powerful, original 1-2 sentence reflection or conclusion drawn strictly from the provided text.",
-            "imageKeyword": "A single word for an Unsplash background image search (e.g., sunrise, forest, path).",
+            "imageCategory": "MUST be exactly ONE of: DESERT_WILDERNESS, NIGHT_STARS, ANCIENT_STONE, ATMOSPHERIC_LIGHT, WATER_STORM",
             "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
           }
         }
     `
 };
 
-// --- 2. MODULAR JOB RUNNER ---
+// *** 2. MODULAR JOB RUNNER ***
 async function runJob(jobType) {
     console.log(`\n🔍 Starting ${jobType} job...`);
     if (!process.env.GEMINI_API_KEY) {
@@ -171,17 +162,17 @@ async function runJob(jobType) {
     }
 
     const templateFn = PROMPT_TEMPLATES[jobType];
-
+    
     console.log(`📚 Checking Supabase for existing ${jobType}s...`);
     const { data: existingCards } = await supabase
         .from('feed_cards')
         .select('metadata_anchor')
         .eq('card_type', jobType);
 
-    const existingNames = existingCards && existingCards.length > 0
+    const existingNames = existingCards && existingCards.length > 0 
         ? existingCards.map(c => c.metadata_anchor).join(', ')
         : 'None generated yet';
-
+    
     let rawTextData = null;
     if (jobType === 'VERSE' || jobType === 'INSPIRATIONAL') {
         rawTextData = await fetchRandomChapterText();
@@ -191,19 +182,19 @@ async function runJob(jobType) {
     const prompt = templateFn(existingNames, rawTextData);
 
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
-
+    
     try {
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
             config: {
                 temperature: 0.0,
-                responseMimeType: "application/json"
+                responseMimeType: "application/json" 
             }
         });
 
         console.log(`✅ ${jobType} Generation complete!`);
-
+        
         try {
             const parsedData = JSON.parse(response.text);
             const cardId = crypto.randomUUID();
@@ -217,11 +208,11 @@ async function runJob(jobType) {
                 finalPayload.hasDeepDive = true;
             }
 
-            // Fetch real image from Unsplash
-            if (finalPayload.imageKeyword) {
-                console.log(`📸 Fetching Unsplash image for: "${finalPayload.imageKeyword}"`);
-                const fetchedUrl = await fetchUnsplashImage(finalPayload.imageKeyword);
-
+            // Generate seeded, attribution-free image URL using curated pools
+            if (finalPayload.imageCategory) {
+                console.log(`📸 Generating image URL for category: "${finalPayload.imageCategory}"`);
+                const fetchedUrl = getImageUrl(finalPayload.imageCategory, parsedData.metadataAnchor);
+                
                 // Map the URL to the correct frontend prop based on card type
                 if (jobType === 'PLACE') {
                     finalPayload.mapImageUrl = fetchedUrl;
@@ -230,6 +221,9 @@ async function runJob(jobType) {
                 } else {
                     finalPayload.imageUrl = fetchedUrl;
                 }
+                
+                // Remove the raw category string from the payload so we don't send unused data to the client
+                delete finalPayload.imageCategory;
             }
 
             console.log(`☁️ Pushing ${parsedData.metadataAnchor} to Supabase...`);
@@ -253,14 +247,14 @@ async function runJob(jobType) {
                         card_id: cardId,
                         content_markdown: extractedDeepDive
                     });
-
+                    
                 if (deepDiveError) throw new Error(`Deep Dive Insert Failed: ${deepDiveError.message}`);
             }
 
             console.log(`🎉 Success! ${parsedData.metadataAnchor} added to database!\n`);
 
         } catch (dbOrParseError) {
-            console.error("❌ ERROR during formatting or database insert:", dbOrParseError);
+             console.error("❌ ERROR during formatting or database insert:", dbOrParseError);
         }
 
     } catch (error) {
@@ -268,7 +262,7 @@ async function runJob(jobType) {
     }
 }
 
-// --- 3. EXECUTION ---
+// *** 3. EXECUTION ***
 const args = process.argv.slice(2);
 const validJobs = ['PERSON', 'PLACE', 'VERSE', 'INSPIRATIONAL'];
 
