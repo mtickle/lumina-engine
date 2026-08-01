@@ -9,9 +9,10 @@ const ai = new GoogleGenAI({});
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.VITE_SUPABASE_SERVICE_KEY;
 const API_BIBLE_KEY = process.env.API_BIBLE_KEY;
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY || !API_BIBLE_KEY) {
-    console.error("❌ ERROR: Missing credentials in .env (Supabase or API.Bible).");
+if (!SUPABASE_URL || !SUPABASE_KEY || !API_BIBLE_KEY || !PEXELS_API_KEY) {
+    console.error("❌ ERROR: Missing credentials in .env (Supabase, API.Bible, or Pexels).");
     process.exit(1);
 }
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -23,7 +24,7 @@ const MODEL_NAME = 'gemini-2.5-flash';
 const BIBLE_ID = '78a9f6124f344018-01'; // NIV
 const CURATED_CHAPTERS = [
     'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53',
-    'EPH.2', 'PHI.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
+    'EPH.2', 'PHP.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
 ];
 
 async function fetchRandomChapterText() {
@@ -48,26 +49,35 @@ async function fetchRandomChapterText() {
     }
 }
 
-// *** IMAGE GENERATION & CURATED POOLS ***
-// Verified, high-quality Picsum IDs with no modern tech or religious mismatches
-const IMAGE_POOLS = {
-    DESERT_WILDERNESS: [1015, 1036, 1040, 1043, 1050],
-    NIGHT_STARS: [1002, 1069, 1074, 903],
-    ANCIENT_STONE: [1018, 1028, 1035, 1048],
-    ATMOSPHERIC_LIGHT: [1039, 1042, 1058, 1060],
-    WATER_STORM: [1000, 1011, 1016, 1024]
-};
+// *** IMAGE GENERATION VIA PEXELS ***
+async function getImageUrl(searchQuery) {
+    if (!searchQuery) return 'https://picsum.photos/seed/lumina/1080/1920'; // Fallback
 
-function getImageUrl(categoryTag, itemIdentifier) {
-    const pool = IMAGE_POOLS[categoryTag] || IMAGE_POOLS.ATMOSPHERIC_LIGHT;
+    console.log(`📸 Searching Pexels for: "${searchQuery}"`);
 
-    // Hash the card's unique text to deterministically pick a consistent image from the pool
-    const hashText = itemIdentifier || 'fallback';
-    const hash = hashText.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const imageId = pool[hash % pool.length];
+    try {
+        const response = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(searchQuery)}&orientation=portrait&per_page=1`, {
+            headers: {
+                Authorization: PEXELS_API_KEY
+            }
+        });
 
-    // Return direct Picsum photo ID URL formatted for portrait mobile devices
-    return `https://picsum.photos/id/${imageId}/1080/1920`;
+        if (!response.ok) throw new Error(`Pexels Error: ${response.status}`);
+
+        const data = await response.json();
+
+        if (data.photos && data.photos.length > 0) {
+            // 'large2x' provides high-resolution imagery ideal for mobile displays
+            return data.photos[0].src.large2x;
+        }
+
+        console.log(`⚠️ No Pexels results for "${searchQuery}", using fallback.`);
+        return 'https://picsum.photos/seed/lumina/1080/1920';
+
+    } catch (error) {
+        console.error("❌ Failed to fetch from Pexels:", error);
+        return 'https://picsum.photos/seed/lumina/1080/1920';
+    }
 }
 
 // *** 1. JOB PROMPT TEMPLATES ***
@@ -87,7 +97,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "Name: Brief Title (e.g., Moses: The Exodus)",
           "payload": {
             "hookText": "A powerful, one-sentence hook (under 15 words).",
-            "imageCategory": "MUST be exactly ONE of: DESERT_WILDERNESS, NIGHT_STARS, ANCIENT_STONE, ATMOSPHERIC_LIGHT, WATER_STORM",
+            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'ancient desert mountains', 'wheat field harvest', 'stone walls ruins'). NEVER include modern objects, people, or buildings.",
             "deepDive": "A 2-3 paragraph biography explaining their biblical significance."
           }
         }
@@ -107,7 +117,7 @@ const PROMPT_TEMPLATES = {
           "payload": {
             "locationName": "Specific Name of the Place (e.g., The Temple Mount)",
             "description": "A 2-paragraph explanation of its historical and theological significance.",
-            "imageCategory": "MUST be exactly ONE of: DESERT_WILDERNESS, NIGHT_STARS, ANCIENT_STONE, ATMOSPHERIC_LIGHT, WATER_STORM"
+            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'ancient desert mountains', 'stone walls ruins', 'sea storm waves'). NEVER include modern objects, people, or buildings."
           }
         }
     `,
@@ -146,7 +156,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
           "payload": {
             "quote": "A powerful, original 1-2 sentence reflection or conclusion drawn strictly from the provided text.",
-            "imageCategory": "MUST be exactly ONE of: DESERT_WILDERNESS, NIGHT_STARS, ANCIENT_STONE, ATMOSPHERIC_LIGHT, WATER_STORM",
+            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'sunrise forest path', 'calm ocean horizon', 'morning sunlight window'). NEVER include modern objects, people, or buildings.",
             "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
           }
         }
@@ -208,10 +218,9 @@ async function runJob(jobType) {
                 finalPayload.hasDeepDive = true;
             }
 
-            // Generate seeded, attribution-free image URL using curated pools
-            if (finalPayload.imageCategory) {
-                console.log(`📸 Generating image URL for category: "${finalPayload.imageCategory}"`);
-                const fetchedUrl = getImageUrl(finalPayload.imageCategory, parsedData.metadataAnchor);
+            // Await the new async Pexels image generation
+            if (finalPayload.imageQuery) {
+                const fetchedUrl = await getImageUrl(finalPayload.imageQuery);
 
                 // Map the URL to the correct frontend prop based on card type
                 if (jobType === 'PLACE') {
@@ -222,8 +231,8 @@ async function runJob(jobType) {
                     finalPayload.imageUrl = fetchedUrl;
                 }
 
-                // Remove the raw category string from the payload so we don't send unused data to the client
-                delete finalPayload.imageCategory;
+                // Remove the raw query string from the payload
+                delete finalPayload.imageQuery;
             }
 
             console.log(`☁️ Pushing ${parsedData.metadataAnchor} to Supabase...`);
