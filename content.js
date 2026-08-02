@@ -135,8 +135,8 @@ const PROMPT_TEMPLATES = {
           "type": "VERSE",
           "metadataAnchor": "Book Chapter:Verse(s) (e.g., Romans 8:28)",
           "payload": {
+            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'sunrise forest path', 'calm ocean horizon', 'morning sunlight window'). NEVER include modern objects, people, or buildings.",
             "text": "The verbatim scripture text you selected.",
-            "theme": "A Tailwind gradient class for the background (e.g., 'bg-gradient-to-br from-slate-900 to-slate-800' or 'bg-gradient-to-br from-blue-900 to-cyan-900')",
             "fontStyle": "font-serif"
           }
         }
