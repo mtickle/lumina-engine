@@ -18,13 +18,38 @@ if (!SUPABASE_URL || !SUPABASE_KEY || !API_BIBLE_KEY || !PEXELS_API_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Configuration for Gemini
-const MODEL_NAME = 'gemini-2.5-flash';
+const MODEL_NAME = 'gemini-3.5-flash';
 
 // *** API.BIBLE CONFIGURATION ***
 const BIBLE_ID = '78a9f6124f344018-01'; // NIV
 const CURATED_CHAPTERS = [
+    // Your Originals
     'ROM.8', 'JHN.1', 'JHN.15', 'PSA.23', 'PSA.139', 'ISA.40', 'ISA.53',
-    'EPH.2', 'PHP.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21'
+    'EPH.2', 'PHP.4', 'COL.1', 'COL.3', 'HEB.11', '1JN.4', 'REV.21',
+
+    // The Torah & Historical Epics (Creation, Exodus, Heroes)
+    'GEN.1', 'GEN.2', 'GEN.12', 'GEN.15', 'EXO.3', 'EXO.14', 'EXO.20', 'JOS.1', 'RUT.1', '1SA.17', 'NEH.8',
+
+    // Wisdom & Poetry (Prime for Inspirational & Verse cards)
+    'PSA.1', 'PSA.8', 'PSA.16', 'PSA.19', 'PSA.27', 'PSA.32', 'PSA.34', 'PSA.42', 'PSA.46', 'PSA.51', 
+    'PSA.63', 'PSA.84', 'PSA.90', 'PSA.91', 'PSA.100', 'PSA.103', 'PSA.121', 'PRO.3', 'PRO.8', 'ECC.3',
+
+    // The Prophets (Messianic Prophecy & Steadfast Hope)
+    'ISA.6', 'ISA.9', 'ISA.43', 'ISA.55', 'ISA.61', 'JER.29', 'LAM.3', 'EZK.37', 'DAN.3', 'DAN.6',
+
+    // The Gospels (Jesus' Life, Parables & Teachings)
+    'MAT.5', 'MAT.6', 'MAT.7', 'MAT.28', 'MRK.4', 'LUK.1', 'LUK.2', 'LUK.15', 'JHN.3', 'JHN.4', 
+    'JHN.10', 'JHN.14', 'JHN.17', 'JHN.20',
+
+    // Acts & The Early Church
+    'ACT.2', 'ACT.9', 'ACT.17',
+
+    // The Epistles (Theology, Love, & Christian Living)
+    'ROM.5', 'ROM.12', '1CO.13', '1CO.15', '2CO.4', '2CO.5', 'GAL.5', 'EPH.1', 'EPH.6', 'PHP.2', 
+    '1TH.4', 'HEB.4', 'HEB.12', 'JAS.1', 'JAS.3', '1PE.1', '1JN.1', '1JN.3',
+
+    // Revelation (The Consummation & Glory)
+    'REV.1', 'REV.4', 'REV.5', 'REV.22'
 ];
 
 async function fetchRandomChapterText() {
@@ -80,6 +105,29 @@ async function getImageUrl(searchQuery) {
     }
 }
 
+// *** GEMINI API RETRY WRAPPER ***
+async function generateWithRetry(prompt, maxRetries = 3, delayMs = 5000) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await ai.models.generateContent({
+                model: MODEL_NAME,
+                contents: prompt,
+                config: {
+                    temperature: 0.0,
+                    responseMimeType: "application/json"
+                }
+            });
+        } catch (error) {
+            // If it is the last retry, or NOT a 503/429 error, throw it so the script catches it
+            if (i === maxRetries - 1 || (error.status !== 503 && error.status !== 429)) {
+                throw error;
+            }
+            console.log(`⚠️ API busy. Retrying in ${delayMs / 1000} seconds (Attempt ${i + 1} of ${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+}
+
 // *** 1. JOB PROMPT TEMPLATES ***
 const PROMPT_TEMPLATES = {
     PERSON: (existing) => `
@@ -87,9 +135,9 @@ const PROMPT_TEMPLATES = {
         Your task is to generate a feed card for a biblical PERSON.
         
         CRITICAL INSTRUCTIONS:
-        - Ensure all historical and theological details are strictly factual according to the biblical text.
-        - Avoid all extra-biblical revelations, apocryphal sources, and modern fringe interpretations.
-        - DO NOT generate a card for any of the following figures: [${existing}]
+        * Ensure all historical and theological details are strictly factual according to the biblical text.
+        * Avoid all extra-biblical revelations, apocryphal sources, and modern fringe interpretations.
+        * DO NOT generate a card for any of the following figures: [${existing}]
         
         REQUIRED JSON SCHEMA:
         {
@@ -97,7 +145,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "Name: Brief Title (e.g., Moses: The Exodus)",
           "payload": {
             "hookText": "A powerful, one-sentence hook (under 15 words).",
-            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'ancient desert mountains', 'wheat field harvest', 'stone walls ruins'). NEVER include modern objects, people, or buildings.",
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'desert wind', 'ancient stone walls', 'gathering storm clouds', 'olive tree branch'.",
             "deepDive": "A 2-3 paragraph biography explaining their biblical significance."
           }
         }
@@ -107,8 +155,8 @@ const PROMPT_TEMPLATES = {
         Your task is to generate a feed card for a biblical PLACE.
         
         CRITICAL INSTRUCTIONS:
-        - Ensure all historical and theological details are strictly factual according to the biblical text.
-        - DO NOT generate a card for any of the following places: [${existing}]
+        * Ensure all historical and theological details are strictly factual according to the biblical text.
+        * DO NOT generate a card for any of the following places: [${existing}]
         
         REQUIRED JSON SCHEMA:
         {
@@ -117,7 +165,7 @@ const PROMPT_TEMPLATES = {
           "payload": {
             "locationName": "Specific Name of the Place (e.g., The Temple Mount)",
             "description": "A 2-paragraph explanation of its historical and theological significance.",
-            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'ancient desert mountains', 'stone walls ruins', 'sea storm waves'). NEVER include modern objects, people, or buildings."
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'arid desert landscape', 'ancient stone ruins', 'calm sea horizon', 'dusty dirt path'."
           }
         }
     `,
@@ -135,7 +183,7 @@ const PROMPT_TEMPLATES = {
           "type": "VERSE",
           "metadataAnchor": "Book Chapter:Verse(s) (e.g., Romans 8:28)",
           "payload": {
-            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'sunrise forest path', 'calm ocean horizon', 'morning sunlight window'). NEVER include modern objects, people, or buildings.",
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
             "text": "The verbatim scripture text you selected.",
             "fontStyle": "font-serif"
           }
@@ -156,7 +204,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
           "payload": {
             "quote": "A powerful, original 1-2 sentence reflection or conclusion drawn strictly from the provided text.",
-            "imageQuery": "A 3-4 word search query for a stock photo API (e.g., 'sunrise forest path', 'calm ocean horizon', 'morning sunlight window'). NEVER include modern objects, people, or buildings.",
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
             "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
           }
         }
@@ -194,14 +242,8 @@ async function runJob(jobType) {
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
 
     try {
-        const response = await ai.models.generateContent({
-            model: MODEL_NAME,
-            contents: prompt,
-            config: {
-                temperature: 0.0,
-                responseMimeType: "application/json"
-            }
-        });
+        // We replaced the direct call with our new retry wrapper here
+        const response = await generateWithRetry(prompt);
 
         console.log(`✅ ${jobType} Generation complete!`);
 
