@@ -31,21 +31,21 @@ const CURATED_CHAPTERS = [
     'GEN.1', 'GEN.2', 'GEN.12', 'GEN.15', 'EXO.3', 'EXO.14', 'EXO.20', 'JOS.1', 'RUT.1', '1SA.17', 'NEH.8',
 
     // Wisdom & Poetry (Prime for Inspirational & Verse cards)
-    'PSA.1', 'PSA.8', 'PSA.16', 'PSA.19', 'PSA.27', 'PSA.32', 'PSA.34', 'PSA.42', 'PSA.46', 'PSA.51', 
+    'PSA.1', 'PSA.8', 'PSA.16', 'PSA.19', 'PSA.27', 'PSA.32', 'PSA.34', 'PSA.42', 'PSA.46', 'PSA.51',
     'PSA.63', 'PSA.84', 'PSA.90', 'PSA.91', 'PSA.100', 'PSA.103', 'PSA.121', 'PRO.3', 'PRO.8', 'ECC.3',
 
     // The Prophets (Messianic Prophecy & Steadfast Hope)
     'ISA.6', 'ISA.9', 'ISA.43', 'ISA.55', 'ISA.61', 'JER.29', 'LAM.3', 'EZK.37', 'DAN.3', 'DAN.6',
 
     // The Gospels (Jesus' Life, Parables & Teachings)
-    'MAT.5', 'MAT.6', 'MAT.7', 'MAT.28', 'MRK.4', 'LUK.1', 'LUK.2', 'LUK.15', 'JHN.3', 'JHN.4', 
+    'MAT.5', 'MAT.6', 'MAT.7', 'MAT.28', 'MRK.4', 'LUK.1', 'LUK.2', 'LUK.15', 'JHN.3', 'JHN.4',
     'JHN.10', 'JHN.14', 'JHN.17', 'JHN.20',
 
     // Acts & The Early Church
     'ACT.2', 'ACT.9', 'ACT.17',
 
     // The Epistles (Theology, Love, & Christian Living)
-    'ROM.5', 'ROM.12', '1CO.13', '1CO.15', '2CO.4', '2CO.5', 'GAL.5', 'EPH.1', 'EPH.6', 'PHP.2', 
+    'ROM.5', 'ROM.12', '1CO.13', '1CO.15', '2CO.4', '2CO.5', 'GAL.5', 'EPH.1', 'EPH.6', 'PHP.2',
     '1TH.4', 'HEB.4', 'HEB.12', 'JAS.1', 'JAS.3', '1PE.1', '1JN.1', '1JN.3',
 
     // Revelation (The Consummation & Glory)
@@ -106,6 +106,7 @@ async function getImageUrl(searchQuery) {
 }
 
 // *** GEMINI API RETRY WRAPPER ***
+// *** GEMINI API RETRY WRAPPER ***
 async function generateWithRetry(prompt, maxRetries = 3, delayMs = 5000) {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -118,11 +119,17 @@ async function generateWithRetry(prompt, maxRetries = 3, delayMs = 5000) {
                 }
             });
         } catch (error) {
-            // If it is the last retry, or NOT a 503/429 error, throw it so the script catches it
-            if (i === maxRetries - 1 || (error.status !== 503 && error.status !== 429)) {
+            // Determine if the error is a polite API rejection or a raw network timeout
+            const isRateLimit = error.status === 429;
+            const isServerBusy = error.status === 503;
+            const isNetworkTimeout = error.message && error.message.includes('fetch failed');
+
+            // If it is the last retry, or NOT one of our trapped errors, throw it
+            if (i === maxRetries - 1 || (!isRateLimit && !isServerBusy && !isNetworkTimeout)) {
                 throw error;
             }
-            console.log(`⚠️ API busy. Retrying in ${delayMs / 1000} seconds (Attempt ${i + 1} of ${maxRetries})...`);
+
+            console.log(`⚠️ API or Network issue. Retrying in ${delayMs / 1000} seconds (Attempt ${i + 1} of ${maxRetries})...`);
             await new Promise(resolve => setTimeout(resolve, delayMs));
         }
     }
