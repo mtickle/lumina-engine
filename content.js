@@ -151,7 +151,8 @@ const PROMPT_TEMPLATES = {
           "type": "PERSON",
           "metadataAnchor": "Name: Brief Title (e.g., Moses: The Exodus)",
           "payload": {
-            "hookText": "A powerful, one-sentence hook (under 15 words).",
+            "title": "The specific name of the person (e.g., Moses).",
+            "description": "A powerful 2 to 3 sentence biographical summary.",
             "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'desert wind', 'ancient stone walls', 'gathering storm clouds', 'olive tree branch'.",
             "deepDive": "A 2-3 paragraph biography explaining their biblical significance."
           }
@@ -168,11 +169,12 @@ const PROMPT_TEMPLATES = {
         REQUIRED JSON SCHEMA:
         {
           "type": "PLACE",
-          "metadataAnchor": "Region or General Area (e.g., Jerusalem, First Century)",
+          "metadataAnchor": "The specific name of the place only. DO NOT include time periods, eras, or regions (e.g., Nineveh).",
           "payload": {
-            "locationName": "Specific Name of the Place (e.g., The Temple Mount)",
-            "description": "A 2-paragraph explanation of its historical and theological significance.",
-            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'arid desert landscape', 'ancient stone ruins', 'calm sea horizon', 'dusty dirt path'."
+            "title": "The specific name of the place only (e.g., Nineveh).",
+            "description": "A 2 to 3 sentence summary of its historical and theological significance.",
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'arid desert landscape', 'ancient stone ruins', 'calm sea horizon', 'dusty dirt path'.",
+            "deepDive": "A 2 to 3 paragraph deep dive explaining its full biblical history."
           }
         }
     `,
@@ -190,9 +192,10 @@ const PROMPT_TEMPLATES = {
           "type": "VERSE",
           "metadataAnchor": "Book Chapter:Verse(s) (e.g., Romans 8:28)",
           "payload": {
+            "title": "Book Chapter:Verse(s) (e.g., Romans 8:28).",
+            "description": "The verbatim scripture text you selected.",
             "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
-            "text": "The verbatim scripture text you selected.",
-            "fontStyle": "font-serif"
+            "deepDive": null
           }
         }
     `,
@@ -210,7 +213,8 @@ const PROMPT_TEMPLATES = {
           "type": "INSPIRATIONAL",
           "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
           "payload": {
-            "quote": "A powerful, original 1-2 sentence reflection or conclusion drawn strictly from the provided text.",
+            "title": "A 2 to 3 word theme (e.g., Daily Encouragement).",
+            "description": "A powerful, original 1 to 2 sentence reflection or conclusion drawn strictly from the provided text.",
             "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
             "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
           }
