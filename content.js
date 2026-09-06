@@ -195,53 +195,53 @@ const PROMPT_TEMPLATES = {
             "title": "The specific name of the event.",
             "description": "Draft the description in exactly two sentences. Sentence 1: Establish the core identity, significance, or scale of the event without using a passive voice. Sentence 2: Introduce the narrative tension, historical weight, or the defining challenge. Do not use introductory clauses. Write immersive narrative prose.",
             "dateContext": "The biblical or historical date or era (e.g., 325 AD, c. 1446 BC, 1st Century AD).",
-            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'parting water', 'ancient scrolls', 'gathering storm', 'stone altar'.",
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe elemental nature, weather, or extreme close-up textures. STRICTLY PROHIBITED: Do not use words like temple, altar, incense, shrine, church, cross, war, weapon, people, or proper nouns. Example safe queries: 'parting water', 'weathered parchment', 'gathering storm', 'rough hewn stone', 'desert wind', 'smoke column'.",
             "deepDive": "A comprehensive 3 paragraph deep dive formatted in Markdown explaining 'The Background', 'The Event', and 'The Aftermath'."
           }
         }
     `,
     VERSE: (existing, rawTextData) => `
         You are a strict editorial curator for a biblical app.
-        Your task is to select a highly impactful, standalone verse (or 2-3 short contiguous verses) from the provided raw text.
+        Your task is to select a highly impactful, standalone verse(or 2 - 3 short contiguous verses) from the provided raw text.
         
-        RAW TEXT SOURCE (Chapter: ${rawTextData.reference}):
-        """
+        RAW TEXT SOURCE(Chapter: ${rawTextData.reference}):
+"""
         ${rawTextData.text}
-        """
+"""
         
         REQUIRED JSON SCHEMA:
-        {
-          "type": "VERSE",
-          "metadataAnchor": "Book Chapter:Verse(s) (e.g., Romans 8:28)",
-          "payload": {
-            "title": "Book Chapter:Verse(s) (e.g., Romans 8:28).",
+{
+    "type": "VERSE",
+        "metadataAnchor": "Book Chapter:Verse(s) (e.g., Romans 8:28)",
+            "payload": {
+        "title": "Book Chapter:Verse(s) (e.g., Romans 8:28).",
             "description": "The verbatim scripture text you selected.",
-            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
-            "deepDive": null
-          }
-        }
-    `,
+                "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
+                    "deepDive": null
+    }
+}
+`,
     INSPIRATIONAL: (existing, rawTextData) => `
         You are a strict, orthodox devotional writer.
         Your task is to write a short, scripturally sound reflection based on a verse from the provided text.
         
-        RAW TEXT SOURCE (Chapter: ${rawTextData.reference}):
-        """
+        RAW TEXT SOURCE(Chapter: ${rawTextData.reference}):
+"""
         ${rawTextData.text}
-        """
+"""
         
         REQUIRED JSON SCHEMA:
-        {
-          "type": "INSPIRATIONAL",
-          "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
-          "payload": {
-            "title": "A 2 to 3 word theme (e.g., Daily Encouragement).",
+{
+    "type": "INSPIRATIONAL",
+        "metadataAnchor": "A 2-3 word theme (e.g., Daily Encouragement, Steadfast Hope)",
+            "payload": {
+        "title": "A 2 to 3 word theme (e.g., Daily Encouragement).",
             "description": "A powerful, original 1 to 2 sentence reflection or conclusion drawn strictly from the provided text.",
-            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
-            "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
-          }
-        }
-    `
+                "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'morning sunlight window', 'calm ocean waves', 'forest path sunrise', 'still water'.",
+                    "deepDive": "A 2 paragraph orthodox reflection on the passage, explaining its meaning and application."
+    }
+}
+`
 };
 
 // *** 2. MODULAR JOB RUNNER ***
@@ -321,7 +321,7 @@ async function runJob(jobType) {
                     payload: finalPayload
                 });
 
-            if (cardError) throw new Error(`Feed Card Insert Failed: ${cardError.message}`);
+            if (cardError) throw new Error(`Feed Card Insert Failed: ${cardError.message} `);
 
             if (extractedDeepDive) {
                 const { error: deepDiveError } = await supabase
@@ -331,7 +331,7 @@ async function runJob(jobType) {
                         content_markdown: extractedDeepDive
                     });
 
-                if (deepDiveError) throw new Error(`Deep Dive Insert Failed: ${deepDiveError.message}`);
+                if (deepDiveError) throw new Error(`Deep Dive Insert Failed: ${deepDiveError.message} `);
             }
 
             console.log(`🎉 Success! ${parsedData.metadataAnchor} added to database!\n`);
@@ -356,8 +356,8 @@ else if (args.includes('--VERSE')) runJob('VERSE');
 else if (args.includes('--INSPIRATIONAL')) runJob('INSPIRATIONAL');
 else if (args.includes('--RANDOM')) {
     const randomJob = validJobs[Math.floor(Math.random() * validJobs.length)];
-    console.log(`🎲 Picked: ${randomJob}`);
+    console.log(`🎲 Picked: ${randomJob} `);
     runJob(randomJob);
 } else {
-    console.log(`❌ No valid flag provided. Try --PERSON, --PLACE, --EVENT, --VERSE, or --INSPIRATIONAL`);
+    console.log(`❌ No valid flag provided.Try--PERSON, --PLACE, --EVENT, --VERSE, or--INSPIRATIONAL`);
 }
