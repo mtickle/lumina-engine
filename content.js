@@ -106,7 +106,6 @@ async function getImageUrl(searchQuery) {
 }
 
 // *** GEMINI API RETRY WRAPPER ***
-// *** GEMINI API RETRY WRAPPER ***
 async function generateWithRetry(prompt, maxRetries = 3, delayMs = 5000) {
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -152,7 +151,7 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "Name: Brief Title (e.g., Moses: The Exodus)",
           "payload": {
             "title": "The specific name of the person (e.g., Moses).",
-            "description": "A powerful 2 to 3 sentence biographical summary.",
+            "description": "Draft the description in exactly two sentences. Sentence 1: Establish the core identity, significance, or scale of the subject without using a passive voice. Sentence 2: Introduce the narrative tension, historical weight, or the defining challenge they faced. Do not use introductory clauses like 'Known for...' or 'Called by God...'. Write immersive narrative prose.",
             "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'desert wind', 'ancient stone walls', 'gathering storm clouds', 'olive tree branch'.",
             "deepDive": "A 2-3 paragraph biography explaining their biblical significance."
           }
@@ -164,6 +163,7 @@ const PROMPT_TEMPLATES = {
         
         CRITICAL INSTRUCTIONS:
         * Ensure all historical and theological details are strictly factual according to the biblical text.
+        * Avoid modern fringe interpretations.
         * DO NOT generate a card for any of the following places: [${existing}]
         
         REQUIRED JSON SCHEMA:
@@ -172,9 +172,31 @@ const PROMPT_TEMPLATES = {
           "metadataAnchor": "The specific name of the place only. DO NOT include time periods, eras, or regions (e.g., Nineveh).",
           "payload": {
             "title": "The specific name of the place only (e.g., Nineveh).",
-            "description": "A 2 to 3 sentence summary of its historical and theological significance.",
+            "description": "Draft the description in exactly two sentences. Sentence 1: Establish the core identity, significance, or scale of the location without using a passive voice. Sentence 2: Introduce the narrative tension, historical weight, or the defining event that occurred there. Do not use introductory clauses. Write immersive narrative prose.",
             "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns (like Israel). Example safe queries: 'arid desert landscape', 'ancient stone ruins', 'calm sea horizon', 'dusty dirt path'.",
             "deepDive": "A 2 to 3 paragraph deep dive explaining its full biblical history."
+          }
+        }
+    `,
+    EVENT: (existing) => `
+        You are a strict, orthodox biblical historian. 
+        Your task is to generate a feed card for a biblical or church history EVENT.
+        
+        CRITICAL INSTRUCTIONS:
+        * Ensure all historical and theological details are strictly factual and orthodox.
+        * Avoid all extra-biblical revelations, apocryphal sources, and modern fringe interpretations.
+        * DO NOT generate a card for any of the following events: [${existing}]
+        
+        REQUIRED JSON SCHEMA:
+        {
+          "type": "EVENT",
+          "metadataAnchor": "The name of the event (e.g., The Council of Nicaea)",
+          "payload": {
+            "title": "The specific name of the event.",
+            "description": "Draft the description in exactly two sentences. Sentence 1: Establish the core identity, significance, or scale of the event without using a passive voice. Sentence 2: Introduce the narrative tension, historical weight, or the defining challenge. Do not use introductory clauses. Write immersive narrative prose.",
+            "dateContext": "The biblical or historical date or era (e.g., 325 AD, c. 1446 BC, 1st Century AD).",
+            "imageQuery": "A 2-3 word search query for a stock photo API. MUST describe a timeless nature scene, weather, or ancient macro texture. STRICTLY PROHIBITED: Do not use words like war, battle, weapon, farmer, people, modern, or proper nouns. Example safe queries: 'parting water', 'ancient scrolls', 'gathering storm', 'stone altar'.",
+            "deepDive": "A comprehensive 3 paragraph deep dive formatted in Markdown explaining 'The Background', 'The Event', and 'The Aftermath'."
           }
         }
     `,
@@ -253,9 +275,7 @@ async function runJob(jobType) {
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
 
     try {
-        // We replaced the direct call with our new retry wrapper here
         const response = await generateWithRetry(prompt);
-
         console.log(`✅ ${jobType} Generation complete!`);
 
         try {
@@ -281,6 +301,7 @@ async function runJob(jobType) {
                 } else if (jobType === 'INSPIRATIONAL') {
                     finalPayload.bgUrl = fetchedUrl;
                 } else {
+                    // PERSON, VERSE, and EVENT use imageUrl
                     finalPayload.imageUrl = fetchedUrl;
                 }
 
@@ -326,10 +347,11 @@ async function runJob(jobType) {
 
 // *** 3. EXECUTION ***
 const args = process.argv.slice(2);
-const validJobs = ['PERSON', 'PLACE', 'VERSE', 'INSPIRATIONAL'];
+const validJobs = ['PERSON', 'PLACE', 'EVENT', 'VERSE', 'INSPIRATIONAL'];
 
 if (args.includes('--PERSON')) runJob('PERSON');
 else if (args.includes('--PLACE')) runJob('PLACE');
+else if (args.includes('--EVENT')) runJob('EVENT');
 else if (args.includes('--VERSE')) runJob('VERSE');
 else if (args.includes('--INSPIRATIONAL')) runJob('INSPIRATIONAL');
 else if (args.includes('--RANDOM')) {
@@ -337,5 +359,5 @@ else if (args.includes('--RANDOM')) {
     console.log(`🎲 Picked: ${randomJob}`);
     runJob(randomJob);
 } else {
-    console.log(`❌ No valid flag provided. Try --PERSON, --PLACE, --VERSE, or --INSPIRATIONAL`);
+    console.log(`❌ No valid flag provided. Try --PERSON, --PLACE, --EVENT, --VERSE, or --INSPIRATIONAL`);
 }
