@@ -246,7 +246,9 @@ const PROMPT_TEMPLATES = {
 
 // *** 2. MODULAR JOB RUNNER ***
 async function runJob(jobType) {
-    console.log(`\n🔍 Starting ${jobType} job...`);
+    const timestamp = new Date().toLocaleString(); // e.g., 9/13/2026, 6:53:09 AM
+
+    console.log(`\n[${timestamp}] 🔍 Starting ${jobType} job...`);
     if (!process.env.GEMINI_API_KEY) {
         console.error("❌ ERROR: GEMINI_API_KEY is not set.");
         return;
