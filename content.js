@@ -106,30 +106,33 @@ async function getImageUrl(searchQuery) {
 }
 
 // *** GEMINI API RETRY WRAPPER ***
-async function generateWithRetry(prompt, maxRetries = 3, delayMs = 5000) {
-    for (let i = 0; i < maxRetries; i++) {
+async function generateWithRetry(requestAction, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            return await ai.models.generateContent({
-                model: MODEL_NAME,
-                contents: prompt,
-                config: {
-                    temperature: 0.0,
-                    responseMimeType: "application/json"
-                }
-            });
+            // Execute the passed-in function directly
+            return await requestAction();
         } catch (error) {
-            // Determine if the error is a polite API rejection or a raw network timeout
-            const isRateLimit = error.status === 429;
-            const isServerBusy = error.status === 503;
-            const isNetworkTimeout = error.message && error.message.includes('fetch failed');
+            const isLastAttempt = attempt === maxRetries;
 
-            // If it is the last retry, or NOT one of our trapped errors, throw it
-            if (i === maxRetries - 1 || (!isRateLimit && !isServerBusy && !isNetworkTimeout)) {
+            // Safely extract the status code
+            const statusCode = error.status || (error.response && error.response.status);
+
+            if (isLastAttempt) {
+                console.error(`\n❌ ERROR generating content after ${maxRetries} attempts:`, error);
                 throw error;
             }
 
-            console.log(`⚠️ API or Network issue. Retrying in ${delayMs / 1000} seconds (Attempt ${i + 1} of ${maxRetries})...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
+            let waitTimeMs;
+
+            if (statusCode === 503 || statusCode === 429) {
+                waitTimeMs = 15000 * Math.pow(2, attempt - 1);
+                console.warn(`\n⚠️ API High Demand (${statusCode}). Sleeping for ${waitTimeMs / 1000}s before Attempt ${attempt + 1} of ${maxRetries}...`);
+            } else {
+                waitTimeMs = 5000;
+                console.warn(`\n⚠️ Network hiccup. Retrying in ${waitTimeMs / 1000}s (Attempt ${attempt + 1} of ${maxRetries})...`);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, waitTimeMs));
         }
     }
 }
@@ -277,7 +280,14 @@ async function runJob(jobType) {
     console.log(`🤖 Prompting ${MODEL_NAME}...`);
 
     try {
-        const response = await generateWithRetry(prompt);
+        const response = await generateWithRetry(() =>
+            ai.models.generateContent({
+                model: 'gemini-3.5-flash',
+                contents: prompt,
+                // Ensure config is at least an empty object to prevent SDK crashes
+                config: {}
+            })
+        );
         console.log(`✅ ${jobType} Generation complete!`);
 
         try {
