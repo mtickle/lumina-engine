@@ -289,7 +289,7 @@ async function runJob(jobType) {
             })
         );
         console.log(`✅ ${jobType} Generation complete!`);
-        console.log(response.text);
+
 
         try {
             let cleanText = response.text.trim();
