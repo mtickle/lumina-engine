@@ -289,9 +289,17 @@ async function runJob(jobType) {
             })
         );
         console.log(`✅ ${jobType} Generation complete!`);
+        console.log(response.text);
 
         try {
-            const parsedData = JSON.parse(response.text);
+            let cleanText = response.text.trim();
+            if (cleanText.startsWith('```json')) {
+                cleanText = cleanText.replace(/^```json/, '').replace(/```$/, '').trim();
+            } else if (cleanText.startsWith('```')) {
+                cleanText = cleanText.replace(/^```/, '').replace(/```$/, '').trim();
+            }
+
+            const parsedData = JSON.parse(cleanText);
             const cardId = crypto.randomUUID();
             let finalPayload = { ...parsedData.payload };
             let extractedDeepDive = null;
